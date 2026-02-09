@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Motorcycle, CarStatus, TransferType } from '../types';
+import { QRCodeSVG } from 'qrcode.react'; // นำเข้าตัวสร้าง QR Code
+import { supabase } from '../lib/supabase';
 
 interface CarFormProps {
   car: Motorcycle | null;
@@ -7,7 +9,6 @@ interface CarFormProps {
   onSubmit: (data: Omit<Motorcycle, 'id'>) => void;
 }
 
-// ✅ 1. ย้าย InputField ออกมาไว้นอกสุด และแก้ให้รับค่า value, onChange
 const InputField = ({ label, name, value, onChange, type = "text", placeholder = "", className = "" }: any) => (
   <div className={`mb-3 ${className}`}>
     <label className="block text-2xl font-bold text-slate-700 mb-1">{label}</label>
@@ -17,7 +18,7 @@ const InputField = ({ label, name, value, onChange, type = "text", placeholder =
       value={value || ''}
       onChange={onChange}
       placeholder={placeholder}
-      className="w-full p-2 text-lg text-slate-900 border-2 border-slate-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-100 outline-none transition-all bg-white"
+      className="w-full p-2 text-lg text-slate-900 border-2 border-slate-300 rounded-lg focus:border-blue-600 focus:ring-1 focus:ring-blue-100 outline-none transition-all bg-white font-bold"
     />
   </div>
 );
@@ -54,6 +55,32 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
     transfer_details: '',
     received_book_date: '',
   });
+
+  // สร้าง Session ID เฉพาะสำหรับการเปิดฟอร์มครั้งนี้
+  const [sessionId] = useState(`tong_${Math.random().toString(36).substr(2, 9)}`);
+  
+  // URL สำหรับหน้าถ่ายรูป (เปลี่ยนให้ตรงกับ IP หรือ Domain จริงเมื่อ Deploy)
+  const uploadUrl = `${window.location.origin}?sid=${sessionId}`;
+
+  // ระบบดักรับรูปจากมือถือแบบ Realtime
+  useEffect(() => {
+    const channel = supabase
+      .channel('sync_photo')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'temp_uploads', filter: `session_id=eq.${sessionId}` },
+        (payload) => {
+          if (payload.new && payload.new.image_url) {
+            setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sessionId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -113,7 +140,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
         </div>
 
         {/* Form Body */}
-        <form id="car-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50">
+        <form id="car-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50 font-sans">
           
           {activeTab === 1 && (
             <div className="space-y-4">
@@ -127,24 +154,28 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-700">
                           <span className="text-4xl mb-1">📸</span>
-                          <span className="text-2xl">กดเพื่อเพิ่มรูป</span>
+                          <span className="text-2xl font-bold">เลือกรูปในเครื่อง</span>
                         </div>
                       )}
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        onChange={handleImageUpload} 
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+                    </div>
+
+                    {/* ส่วน QR Code ที่เพิ่มเข้ามา */}
+                    <div className="mt-4 p-3 bg-green-50 rounded-xl border-2 border-dashed border-green-600 flex flex-col items-center">
+                      <p className="text-sm font-bold text-green-800 mb-2 text-center leading-tight">ใช้มือถือสแกนถ่ายรูป<br/>รูปจะเข้าคอมทันที</p>
+                      <div className="bg-white p-2 rounded-lg shadow-sm border border-green-200">
+                        <QRCodeSVG value={uploadUrl} size={110} />
+                      </div>
+                      <p className="text-[12px] text-blue-600 mt-2 animate-pulse">กำลังรอรูปจากมือถือ...</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="lg:col-span-8 space-y-4">
                   <div className="bg-white p-4 rounded-2xl border-2 border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-x-4">
-                   <InputField label="วันที่ซื้อเข้าร้าน" name="purchase_date" type="date" value={formData.purchase_date} onChange={handleChange} />
+                    <InputField label="วันที่ซื้อเข้าร้าน" name="purchase_date" type="date" value={formData.purchase_date} onChange={handleChange} />
                     <div className="mb-3">
-                      <label className="block text-2xl font-bold  text-slate-700 mb-1">สถานะรถ</label>
+                      <label className="block text-2xl font-bold text-slate-700 mb-1">สถานะรถ</label>
                       <select 
                         name="status" 
                         value={formData.status} 
@@ -157,7 +188,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                     </div>
                   </div>
                   <div className="bg-white p-4 rounded-2xl border-2 border-slate-200 shadow-sm grid grid-cols-2 md:grid-cols-3 gap-x-4">
-                    <InputField label="ยี่ห้อรถ" name="brand" value={formData.brand} onChange={handleChange} placeholder="Honda " />
+                    <InputField label="ยี่ห้อรถ" name="brand" value={formData.brand} onChange={handleChange} placeholder="Honda" />
                     <InputField label="แบบ/รุ่น" name="model_type" value={formData.model_type} onChange={handleChange} placeholder="Wave 110i" />
                     <InputField label="ปี ค.ศ." name="year_model" value={formData.year_model} onChange={handleChange} placeholder="2024" />
                     <InputField label="เลขทะเบียน" name="reg_number" value={formData.reg_number} onChange={handleChange} />
@@ -183,7 +214,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
 
           {activeTab === 2 && (
             <div className="max-w-3xl mx-auto">
-              <div className="bg-white p-6 rounded-2xl border-2 border-slate-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border-2 border-slate-200 shadow-sm font-sans">
                 <div className="flex items-center gap-3 mb-4 border-b pb-3">
                   <h3 className="text-xl font-black text-slate-800">ข้อมูลเจ้าของรถคนเดิม</h3>
                 </div>
@@ -199,7 +230,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                       value={formData.original_owner_address} 
                       onChange={handleChange}
                       rows={2}
-                      className="w-full p-2 text-lg border-2 border-slate-300 rounded-lg focus:border-blue-600 outline-none"
+                      className="w-full p-2 text-lg border-2 border-slate-300 rounded-lg focus:border-blue-600 outline-none font-bold"
                     />
                   </div>
                 </div>
@@ -209,7 +240,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
 
           {activeTab === 3 && (
             <div className="max-w-3xl mx-auto space-y-4">
-              <div className="bg-white p-6 rounded-2xl border-2 border-slate-200 shadow-sm space-y-4">
+              <div className="bg-white p-6 rounded-2xl border-2 border-slate-200 shadow-sm space-y-4 font-sans">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <InputField label="วันที่ขาย" name="sale_date" type="date" value={formData.sale_date} onChange={handleChange} />
                   <InputField label="ราคาขาย (บาท)" name="sale_price" type="number" value={formData.sale_price} onChange={handleChange} />
@@ -221,7 +252,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                       value={formData.buyer_address} 
                       onChange={handleChange}
                       rows={2}
-                      className="w-full p-2 text-lg border-2 border-slate-300 rounded-lg"
+                      className="w-full p-2 text-lg border-2 border-slate-300 rounded-lg font-bold"
                     />
                   </div>
                 </div>
@@ -234,7 +265,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                       onClick={() => setFormData(p => ({ ...p, transfer_type: TransferType.SHOP }))}
                       className={`flex-1 py-3 rounded-xl border-2 font-bold transition-all ${
                         formData.transfer_type === TransferType.SHOP 
-                        ? 'bg-blue-600 text-white border-blue-800' 
+                        ? 'bg-blue-600 text-white border-blue-800 shadow-md' 
                         : 'bg-white text-slate-400 border-slate-200'
                       }`}
                     >
@@ -245,7 +276,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                       onClick={() => setFormData(p => ({ ...p, transfer_type: TransferType.SELF }))}
                       className={`flex-1 py-3 rounded-xl border-2 font-bold transition-all ${
                         formData.transfer_type === TransferType.SELF 
-                        ? 'bg-blue-600 text-white border-blue-800' 
+                        ? 'bg-blue-600 text-white border-blue-800 shadow-md' 
                         : 'bg-white text-slate-400 border-slate-200'
                       }`}
                     >
@@ -267,18 +298,8 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
 
         {/* Footer */}
         <div className="p-4 bg-slate-50 flex gap-3 border-t border-slate-200">
-          <button 
-            type="button" 
-            onClick={onClose} 
-            className="flex-1 py-3 bg-white text-slate-600 text-lg font-bold rounded-xl border-2 border-slate-300 active:scale-95 transition-all"
-          >
-            ยกเลิก
-          </button>
-          <button 
-            type="submit"
-            form="car-form"
-            className="flex-[2] py-3 bg-green-700 text-white text-xl font-bold rounded-xl shadow-lg hover:bg-green-800 active:scale-95 transition-all"
-          >
+          <button type="button" onClick={onClose} className="flex-1 py-3 bg-white text-slate-600 text-lg font-bold rounded-xl border-2 border-slate-300 active:scale-95 transition-all">ยกเลิก</button>
+          <button type="submit" form="car-form" className="flex-[2] py-3 bg-green-700 text-white text-xl font-bold rounded-xl shadow-lg hover:bg-green-800 active:scale-95 transition-all">
             {car ? '💾 บันทึกแก้ไข' : '✅ เพิ่มข้อมูลรถ'}
           </button>
         </div>
