@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from './lib/supabase';
 
 export const MobileUpload: React.FC = () => {
-  const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -12,63 +11,65 @@ export const MobileUpload: React.FC = () => {
   const sessionId = query.get('id');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = (event: any) => {
-      const img = new Image();
-      img.src = event.target.result;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800; // ✅ บีบให้ขนาดพอดีหน้าจอคอม
-        const scaleSize = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
-        canvas.height = img.height * scaleSize;
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event: any) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 800; // บีบความกว้าง
+          const scaleSize = MAX_WIDTH / img.width;
+          canvas.width = MAX_WIDTH;
+          canvas.height = img.height * scaleSize;
 
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-        
-        // ✅ บีบอัดไฟล์ให้เล็กลงมากพอที่จะส่งผ่าน Realtime ได้ทุกรูป
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6); 
-        setPreviewUrl(dataUrl);
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+          
+          // ✅ บีบอัดเหลือ 0.6 (60%) เพื่อให้ Realtime ส่งข้อมูลผ่านได้เสถียร
+          const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6); 
+          setPreviewUrl(compressedBase64);
+        };
       };
-    };
-    reader.readAsDataURL(file);
-  }
-};
-
-// ในไฟล์ MobileUpload.tsx
-const handleUpload = async () => {
-  if (!image || !sessionId) return;
-  setUploading(true);
-
-  const reader = new FileReader();
-  reader.readAsDataURL(image);
-  reader.onloadend = async () => {
-    const base64data = reader.result as string;
-
-    // ✅ เปลี่ยนมาอัปเดตที่ตาราง motorcycles ของคุณโดยตรง
-    const { error } = await supabase
-      .from('motorcycles') 
-      .update({ image_url: base64data }) 
-      .eq('id', sessionId); // sessionId คือ ID ของรถคันนั้นๆ
-
-    if (error) {
-      alert("เกิดข้อผิดพลาด: " + error.message);
-    } else {
-      setStatus('success');
-      alert("บันทึกรูปภาพเรียบร้อย!");
+      reader.readAsDataURL(file);
     }
-    setUploading(false);
   };
-};
+
+  const handleUpload = async () => {
+    // ✅ ใช้ previewUrl ที่บีบอัดแล้วส่งได้เลย ไม่ต้องใช้ตัวแปร image
+    if (!previewUrl || !sessionId) {
+        alert("กรุณาถ่ายรูปก่อนครับ");
+        return;
+    }
+    
+    setUploading(true);
+
+    try {
+      // ✅ อัปเดตที่ตาราง motorcycles โดยตรง
+      const { error } = await supabase
+        .from('motorcycles') 
+        .update({ image_url: previewUrl }) 
+        .eq('id', sessionId);
+
+      if (error) {
+        throw error;
+      } else {
+        setStatus('success');
+      }
+    } catch (error: any) {
+      alert("เกิดข้อผิดพลาด: " + error.message);
+    } finally {
+      setUploading(false);
+    }
+  };
   
   if (status === 'success') {
     return (
       <div className="min-h-screen bg-green-600 flex flex-col items-center justify-center text-white p-6 text-center">
-        <div className="text-7xl mb-4">✅</div>
+        <div className="text-7xl mb-4 animate-bounce">✅</div>
         <h1 className="text-4xl font-black mb-2">ส่งรูปเรียบร้อย!</h1>
-        <p className="text-xl opacity-90">คุณสามารถปิดหน้านี้ได้เลยครับ</p>
+        <p className="text-xl opacity-90">รูปเด้งไปที่หน้าคอมเรียบร้อยแล้วครับ<br/>คุณสามารถปิดหน้านี้ได้เลย</p>
       </div>
     );
   }
@@ -88,26 +89,24 @@ const handleUpload = async () => {
         ) : (
           <div className="flex flex-col items-center">
             <span className="text-7xl mb-2">📸</span>
-            <p className="font-bold">กดตรงนี้เพื่อถ่ายรูป</p>
+            <p className="font-bold text-lg">กดเพื่อถ่ายรูป</p>
           </div>
         )}
         
-        {/* Input สำหรับกดเลือกรูป/ถ่ายรูป */}
         <input 
           type="file" 
           accept="image/*" 
-          capture="environment" // บังคับเปิดกล้องหลังทันที
+          capture="environment" 
           onChange={handleFileChange}
           className="absolute inset-0 opacity-0 cursor-pointer"
         />
       </div>
 
-      {/* ✅ ปุ่มกดยืนยัน (จะโผล่มาเมื่อเลือกรูปแล้ว) */}
       {previewUrl && (
         <button
           onClick={handleUpload}
           disabled={uploading}
-          className={`mt-10 w-full max-w-sm py-5 rounded-full text-2xl font-black shadow-xl transition-all active:scale-90 ${
+          className={`mt-10 w-full max-w-sm py-5 rounded-full text-2xl font-black shadow-xl transition-all active:scale-95 ${
             uploading ? 'bg-slate-400' : 'bg-yellow-400 text-blue-900'
           }`}
         >
@@ -115,16 +114,16 @@ const handleUpload = async () => {
         </button>
       )}
 
-      {previewUrl && (
+      {previewUrl && !uploading && (
         <button 
-          onClick={() => { setPreviewUrl(null); setImage(null); }}
+          onClick={() => setPreviewUrl(null)}
           className="mt-4 text-white/70 font-bold underline"
         >
           ถ่ายใหม่
         </button>
       )}
 
-      <p className="mt-8 text-xs opacity-50">Session: {sessionId}</p>
+      <p className="mt-8 text-[10px] opacity-30">ID: {sessionId}</p>
     </div>
   );
 };
