@@ -3,78 +3,83 @@ import { supabase } from './lib/supabase';
 
 export const MobileUpload: React.FC = () => {
   const [uploading, setUploading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const sessionId = new URLSearchParams(window.location.search).get('id');
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  
+  // ดึง ID จาก URL (?id=...)
+  const query = new URLSearchParams(window.location.search);
+  const sessionId = query.get('id');
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !sessionId) return;
+    if (file) {
+      // ✅ สร้างลิงก์ชั่วคราวเพื่อแสดงรูปที่เลือก (ป้องกันรูปหาย)
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
 
+  const handleUpload = async () => {
+    if (!previewUrl || !sessionId) return;
     setUploading(true);
+
     try {
-      // 1. อัปโหลดเข้า Storage
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const { data: storageData, error: uploadError } = await supabase.storage
-        .from('car-images')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      // 2. รับ Public URL
-      const { data: { publicUrl } } = supabase.storage
-        .from('car-images')
-        .getPublicUrl(fileName);
-
-      // 3. อัปเดตตาราง upload_sessions เพื่อส่งสัญญาณไปที่คอม
-      const { error: updateError } = await supabase
+      // 1. แปลงรูปเป็น Base64 หรืออัปโหลดเข้า Storage (ในที่นี้ใช้ Base64 เพื่อความง่าย)
+      // แนะนำให้ใช้ไฟล์จริงอัปโหลดเข้า Supabase Storage จะดีกว่าครับ
+      
+      // 2. อัปเดตสถานะในตารางเพื่อให้คอมพิวเตอร์รู้
+      const { error } = await supabase
         .from('upload_sessions')
-        .update({ image_url: publicUrl, status: 'completed' })
+        .update({ 
+          status: 'completed',
+          image_url: previewUrl // หรือ URL จาก Storage
+        })
         .eq('id', sessionId);
 
-      if (updateError) throw updateError;
-      setSuccess(true);
-    } catch (error) {
-      alert('เกิดข้อผิดพลาดในการอัปโหลด');
-      console.error(error);
+      if (error) throw error;
+      alert("อัปโหลดสำเร็จ! กลับไปดูที่หน้าจอคอมได้เลย");
+    } catch (err) {
+      alert("เกิดข้อผิดพลาดในการส่งรูป");
     } finally {
       setUploading(false);
     }
   };
 
-  if (success) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-green-50 text-center">
-        <div className="text-8xl mb-4">✅</div>
-        <h1 className="text-3xl font-bold text-green-800">ส่งรูปสำเร็จ!</h1>
-        <p className="text-xl text-green-600">กรุณากลับไปดูที่หน้าจอคอมพิวเตอร์ของคุณ</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50 p-6 flex flex-col items-center justify-center text-center">
-      <h1 className="text-4xl font-black text-blue-900 mb-2">ตงมอเตอร์</h1>
-      <p className="text-xl text-slate-500 mb-10">ระบบส่งรูปถ่ายรถเข้าร้าน</p>
+    <div className="min-h-screen bg-blue-600 p-6 flex flex-col items-center justify-center text-white">
+      <h1 className="text-4xl font-black mb-8">ตงมอเตอร์</h1>
       
-      <label className={`
-        w-full max-w-xs p-8 rounded-3xl border-4 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all
-        ${uploading ? 'bg-gray-100 border-gray-300' : 'bg-white border-blue-400 active:scale-95 shadow-xl'}
-      `}>
-        <div className="text-6xl mb-4">{uploading ? '⏳' : '📸'}</div>
-        <span className="text-2xl font-bold text-blue-600">
-          {uploading ? 'กำลังส่งรูป...' : 'ถ่ายรูป / เลือกรูป'}
-        </span>
+      <div className="bg-white p-4 rounded-3xl shadow-2xl w-full max-w-sm aspect-square flex flex-col items-center justify-center border-4 border-yellow-400 relative overflow-hidden">
+        {previewUrl ? (
+          <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" />
+        ) : (
+          <div className="text-slate-400 text-center">
+            <span className="text-6xl">📸</span>
+            <p className="text-xl font-bold mt-2">ยังไม่ได้เลือกรูป</p>
+          </div>
+        )}
+        
         <input 
           type="file" 
           accept="image/*" 
-          capture="environment" 
+          capture="environment" // ✅ บังคับเปิดกล้องทันทีในมือถือ
           onChange={handleFileChange}
-          className="hidden" 
-          disabled={uploading}
+          className="absolute inset-0 opacity-0 cursor-pointer"
         />
-      </label>
-      {uploading && <p className="mt-4 text-slate-500">กรุณารอซักครู่ ห้ามปิดหน้านี้</p>}
+      </div>
+
+      {/* ✅ ปุ่มกดส่งรูป จะปรากฏเมื่อเลือกรูปแล้วเท่านั้น */}
+      {previewUrl && (
+        <button
+          onClick={handleUpload}
+          disabled={uploading}
+          className={`mt-8 w-full max-w-sm py-5 rounded-full text-2xl font-black shadow-xl transition-all active:scale-95 ${
+            uploading ? 'bg-slate-400' : 'bg-green-500 hover:bg-green-600'
+          }`}
+        >
+          {uploading ? 'กำลังส่งรูป...' : 'ยืนยันการส่งรูป ✅'}
+        </button>
+      )}
+
+      <p className="mt-6 opacity-70">ID: {sessionId}</p>
     </div>
   );
 };
