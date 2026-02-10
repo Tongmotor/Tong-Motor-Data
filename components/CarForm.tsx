@@ -320,7 +320,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
         {showQR && (
           <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-white text-center">
             <div className="bg-white p-6 rounded-3xl mb-4 shadow-2xl">
-              <QRCodeSVG value={`${window.location.origin}/#/upload?id=${sessionId}`} size={280} />
+              <QRCodeSVG value={`${window.location.origin}/upload?id=${car ? car.id : sessionId}`} size={280} />
             </div>
             <h2 className="text-3xl font-bold mb-2">หยิบมือถือมาสแกน</h2>
             <p className="text-xl opacity-80 mb-8">เพื่อถ่ายรูปมอเตอร์ไซค์เข้าร้าน</p>
