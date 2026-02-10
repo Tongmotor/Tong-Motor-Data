@@ -60,48 +60,35 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
   const [showQR, setShowQR] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const startMobileUpload = async () => {
-    // ✅ 1. ตรวจสอบ ID: ถ้าเป็นรถใหม่ที่ยังไม่มี ID ให้สร้างข้อมูลชั่วคราวใน DB ก่อน
-    let currentId = car?.id;
+  // ใน CarForm.tsx ส่วนที่จัดการการสแกน QR
+const startMobileUpload = async () => {
+  // 1. ถ้าเป็นการ "แก้ไขรถ" เรามี id อยู่แล้ว
+  // 2. ถ้าเป็น "เพิ่มรถใหม่" เราต้อง Insert แถวว่างๆ เข้าไปก่อนเพื่อให้ได้ ID
+  let currentId = car?.id;
 
-    if (!currentId) {
-      // สร้าง Row เปล่าในตาราง motorcycles เพื่อจอง ID ไว้สำหรับรับรูป
-      const { data, error } = await supabase
-        .from('motorcycles')
-        .insert([{ status: CarStatus.AVAILABLE }])
-        .select()
-        .single();
-      
-      if (error) {
-        alert("ไม่สามารถสร้าง Session สำหรับอัปโหลดได้");
-        return;
-      }
-      currentId = data.id;
-    }
+  if (!currentId) {
+    const { data } = await supabase.from('motorcycles').insert([{ status: 'พร้อมขาย' }]).select().single();
+    if (data) currentId = data.id;
+  }
 
+  if (currentId) {
     setSessionId(currentId);
     setShowQR(true);
-
-    // ✅ 2. เปิดระบบ Realtime รอรับรูป
-    const channel = supabase.channel(`sync-car-${currentId}`)
+    
+    // ✅ เปลี่ยนมาติดตามตาราง motorcycles
+    const channel = supabase.channel(`car-${currentId}`)
       .on('postgres_changes', 
-        { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'motorcycles', 
-          filter: `id=eq.${currentId}` 
-        }, 
+        { event: 'UPDATE', schema: 'public', table: 'motorcycles', filter: `id=eq.${currentId}` }, 
         (payload) => {
-          console.log("ได้รับรูปภาพใหม่จากมือถือ!", payload.new);
           if (payload.new.image_url) {
             setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
-            // เมื่อรูปเด้งมาแล้ว ให้แสดงผลในคอมทันที
-            // คุณสามารถสั่ง setShowQR(false) ตรงนี้ถ้าอยากให้ปิด QR อัตโนมัติ
+            setShowQR(false); // รูปมาแล้ว ปิด QR ทันที
+            supabase.removeChannel(channel);
           }
         }
-      )
-      .subscribe();
-  };
+      ).subscribe();
+  }
+};
   // -------------------------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
