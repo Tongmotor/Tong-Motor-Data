@@ -21,40 +21,36 @@ export const MobileUpload: React.FC = () => {
     }
   };
 
-// ใน CarForm.tsx
+// ใน CarForm.tsx ส่วนที่จัดการการสแกน QR
 const startMobileUpload = async () => {
-  // ... (โค้ดจัดการ ID รถเดิมของคุณ)
+  // 1. ถ้าเป็นการ "แก้ไขรถ" เรามี id อยู่แล้ว
+  // 2. ถ้าเป็น "เพิ่มรถใหม่" เราต้อง Insert แถวว่างๆ เข้าไปก่อนเพื่อให้ได้ ID
+  let currentId = car?.id;
 
-  // ✅ สร้าง Realtime Channel เพื่อรอรับรูป
-  const channel = supabase.channel(`sync-image-${currentId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'motorcycles',
-        filter: `id=eq.${currentId}`
-      },
-      (payload) => {
-        console.log("ได้รับข้อมูลใหม่!", payload.new);
-        
-        // ✅ ถ้าในข้อมูลใหม่มี image_url ให้เอามาใส่ในฟอร์มคอมพิวเตอร์ทันที
-        if (payload.new.image_url) {
-          setFormData(prev => ({ 
-            ...prev, 
-            image_url: payload.new.image_url 
-          }));
-          
-          // ปิด QR Code อัตโนมัติ (หรือจะให้ผู้ใช้กดปิดเองก็ได้)
-          setShowQR(false); 
-          
-          // ยกเลิกการติดตามเพื่อประหยัดทรัพยากร
-          supabase.removeChannel(channel);
+  if (!currentId) {
+    const { data } = await supabase.from('motorcycles').insert([{ status: 'พร้อมขาย' }]).select().single();
+    if (data) currentId = data.id;
+  }
+
+  if (currentId) {
+    setSessionId(currentId);
+    setShowQR(true);
+    
+    // ✅ เปลี่ยนมาติดตามตาราง motorcycles
+    const channel = supabase.channel(`car-${currentId}`)
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'motorcycles', filter: `id=eq.${currentId}` }, 
+        (payload) => {
+          if (payload.new.image_url) {
+            setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
+            setShowQR(false); // รูปมาแล้ว ปิด QR ทันที
+            supabase.removeChannel(channel);
+          }
         }
-      }
-    )
-    .subscribe();
+      ).subscribe();
+  }
 };
+  
   if (status === 'success') {
     return (
       <div className="min-h-screen bg-green-600 flex flex-col items-center justify-center text-white p-6 text-center">
