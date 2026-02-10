@@ -60,7 +60,7 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
   const [showQR, setShowQR] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-onst startMobileUpload = async () => {
+const startMobileUpload = async () => {
   // ... (โค้ดสร้าง ID หรือดึง ID เดิม)
 
   const channel = supabase.channel(`sync-car-${currentId}`)
