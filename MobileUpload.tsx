@@ -37,19 +37,30 @@ export const MobileUpload: React.FC = () => {
   }
 };
 
-// ใน MobileUpload.tsx
+// ในไฟล์ MobileUpload.tsx
 const handleUpload = async () => {
-  // ... (โค้ดแปลงไฟล์)
-  const { error } = await supabase
-    .from('motorcycles')
-    .update({ image_url: base64data })
-    .eq('id', sessionId);
+  if (!image || !sessionId) return;
+  setUploading(true);
 
-  if (!error) {
-    // พอมือถือ Update สำเร็จปุ๊บ... 
-    // ตัว 'postgres_changes' ในคอมพิวเตอร์จะทำงานทันที!
-    setStatus('success');
-  }
+  const reader = new FileReader();
+  reader.readAsDataURL(image);
+  reader.onloadend = async () => {
+    const base64data = reader.result as string;
+
+    // ✅ เปลี่ยนมาอัปเดตที่ตาราง motorcycles ของคุณโดยตรง
+    const { error } = await supabase
+      .from('motorcycles') 
+      .update({ image_url: base64data }) 
+      .eq('id', sessionId); // sessionId คือ ID ของรถคันนั้นๆ
+
+    if (error) {
+      alert("เกิดข้อผิดพลาด: " + error.message);
+    } else {
+      setStatus('success');
+      alert("บันทึกรูปภาพเรียบร้อย!");
+    }
+    setUploading(false);
+  };
 };
   
   if (status === 'success') {
