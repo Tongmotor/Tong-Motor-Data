@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Motorcycle, CarStatus, TransferType } from '../types';
+import { QRCodeSVG } from 'qrcode.react';
+import { supabase } from '../lib/supabase';
 
 interface CarFormProps {
   car: Motorcycle | null;
@@ -7,7 +9,6 @@ interface CarFormProps {
   onSubmit: (data: Omit<Motorcycle, 'id'>) => void;
 }
 
-// ✅ 1. ย้าย InputField ออกมาไว้นอกสุด และแก้ให้รับค่า value, onChange
 const InputField = ({ label, name, value, onChange, type = "text", placeholder = "", className = "" }: any) => (
   <div className={`mb-3 ${className}`}>
     <label className="block text-2xl font-bold text-slate-700 mb-1">{label}</label>
@@ -54,6 +55,29 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
     transfer_details: '',
     received_book_date: '',
   });
+
+  // --- ระบบ QR Code อัปโหลด ---
+  const [showQR, setShowQR] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  const startMobileUpload = async () => {
+    const { data } = await supabase.from('upload_sessions').insert([{ status: 'pending' }]).select().single();
+    if (data) {
+      setSessionId(data.id);
+      setShowQR(true);
+      
+      const channel = supabase.channel(`room-${data.id}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'upload_sessions', filter: `id=eq.${data.id}` }, 
+        (payload) => {
+          if (payload.new.status === 'completed') {
+            setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
+            setShowQR(false);
+            supabase.removeChannel(channel);
+          }
+        }).subscribe();
+    }
+  };
+  // -------------------------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -137,6 +161,15 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
                         className="absolute inset-0 opacity-0 cursor-pointer"
                       />
                     </div>
+
+                    {/* ✅ เพิ่มปุ่มสแกน QR ตรงนี้ */}
+                    <button 
+                      type="button"
+                      onClick={startMobileUpload}
+                      className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                    >
+                      📱 ใช้มือถือถ่ายรูป
+                    </button>
                   </div>
                 </div>
 
@@ -282,6 +315,25 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
             {car ? '💾 บันทึกแก้ไข' : '✅ เพิ่มข้อมูลรถ'}
           </button>
         </div>
+
+        {/* ✅ Popup QR Code */}
+        {showQR && (
+          <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-white text-center">
+            <div className="bg-white p-6 rounded-3xl mb-4 shadow-2xl">
+              <QRCodeSVG value={`${window.location.origin}/upload?id=${sessionId}`} size={280} />
+            </div>
+            <h2 className="text-3xl font-bold mb-2">หยิบมือถือมาสแกน</h2>
+            <p className="text-xl opacity-80 mb-8">เพื่อถ่ายรูปมอเตอร์ไซค์เข้าร้าน</p>
+            <button 
+              type="button"
+              onClick={() => setShowQR(false)} 
+              className="px-12 py-4 bg-red-600 text-white rounded-full font-bold text-2xl active:scale-90 transition-transform shadow-lg"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
