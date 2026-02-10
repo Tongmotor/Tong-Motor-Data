@@ -21,32 +21,40 @@ export const MobileUpload: React.FC = () => {
     }
   };
 
-// ในไฟล์ MobileUpload.tsx
-const handleUpload = async () => {
-  if (!image || !sessionId) return;
-  setUploading(true);
+// ใน CarForm.tsx
+const startMobileUpload = async () => {
+  // ... (โค้ดจัดการ ID รถเดิมของคุณ)
 
-  const reader = new FileReader();
-  reader.readAsDataURL(image);
-  reader.onloadend = async () => {
-    const base64data = reader.result as string;
-
-    // ✅ เปลี่ยนมาอัปเดตที่ตาราง motorcycles ของคุณโดยตรง
-    const { error } = await supabase
-      .from('motorcycles') 
-      .update({ image_url: base64data }) 
-      .eq('id', sessionId); // sessionId คือ ID ของรถคันนั้นๆ
-
-    if (error) {
-      alert("เกิดข้อผิดพลาด: " + error.message);
-    } else {
-      setStatus('success');
-      alert("บันทึกรูปภาพเรียบร้อย!");
-    }
-    setUploading(false);
-  };
+  // ✅ สร้าง Realtime Channel เพื่อรอรับรูป
+  const channel = supabase.channel(`sync-image-${currentId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'motorcycles',
+        filter: `id=eq.${currentId}`
+      },
+      (payload) => {
+        console.log("ได้รับข้อมูลใหม่!", payload.new);
+        
+        // ✅ ถ้าในข้อมูลใหม่มี image_url ให้เอามาใส่ในฟอร์มคอมพิวเตอร์ทันที
+        if (payload.new.image_url) {
+          setFormData(prev => ({ 
+            ...prev, 
+            image_url: payload.new.image_url 
+          }));
+          
+          // ปิด QR Code อัตโนมัติ (หรือจะให้ผู้ใช้กดปิดเองก็ได้)
+          setShowQR(false); 
+          
+          // ยกเลิกการติดตามเพื่อประหยัดทรัพยากร
+          supabase.removeChannel(channel);
+        }
+      }
+    )
+    .subscribe();
 };
-
   if (status === 'success') {
     return (
       <div className="min-h-screen bg-green-600 flex flex-col items-center justify-center text-white p-6 text-center">
