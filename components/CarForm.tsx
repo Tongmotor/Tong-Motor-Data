@@ -56,33 +56,52 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
     received_book_date: '',
   });
 
-  // --- ระบบ QR Code อัปโหลด ---
+ // --- ระบบ QR Code อัปโหลด ---
   const [showQR, setShowQR] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-const startMobileUpload = async () => {
-  // ... (โค้ดสร้าง ID หรือดึง ID เดิม)
+  const startMobileUpload = async () => {
+    // ✅ 1. ตรวจสอบ ID: ถ้าเป็นรถใหม่ที่ยังไม่มี ID ให้สร้างข้อมูลชั่วคราวใน DB ก่อน
+    let currentId = car?.id;
 
-  const channel = supabase.channel(`sync-car-${currentId}`)
-    .on('postgres_changes', 
-      { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'motorcycles', 
-        filter: `id=eq.${currentId}` 
-      }, 
-      (payload) => {
-        console.log("Change detected!", payload.new);
-        // ✅ เมื่อมีการ Update ปุ๊บ ให้เอา image_url มาใส่ในฟอร์มทันที
-        if (payload.new.image_url) {
-          setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
-          // ไม่ต้องปิด QR ทันทีก็ได้ถ้าอยากให้ผู้ใช้เห็นว่ารูปเข้าแล้วค่อยกดปิดเอง
-          // หรือจะสั่ง setShowQR(false) หลังจากหน่วงเวลา 1-2 วินาที
-        }
+    if (!currentId) {
+      // สร้าง Row เปล่าในตาราง motorcycles เพื่อจอง ID ไว้สำหรับรับรูป
+      const { data, error } = await supabase
+        .from('motorcycles')
+        .insert([{ status: CarStatus.AVAILABLE }])
+        .select()
+        .single();
+      
+      if (error) {
+        alert("ไม่สามารถสร้าง Session สำหรับอัปโหลดได้");
+        return;
       }
-    )
-    .subscribe();
-};
+      currentId = data.id;
+    }
+
+    setSessionId(currentId);
+    setShowQR(true);
+
+    // ✅ 2. เปิดระบบ Realtime รอรับรูป
+    const channel = supabase.channel(`sync-car-${currentId}`)
+      .on('postgres_changes', 
+        { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'motorcycles', 
+          filter: `id=eq.${currentId}` 
+        }, 
+        (payload) => {
+          console.log("ได้รับรูปภาพใหม่จากมือถือ!", payload.new);
+          if (payload.new.image_url) {
+            setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
+            // เมื่อรูปเด้งมาแล้ว ให้แสดงผลในคอมทันที
+            // คุณสามารถสั่ง setShowQR(false) ตรงนี้ถ้าอยากให้ปิด QR อัตโนมัติ
+          }
+        }
+      )
+      .subscribe();
+  };
   // -------------------------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
