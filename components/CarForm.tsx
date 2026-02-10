@@ -60,23 +60,34 @@ export const CarForm: React.FC<CarFormProps> = ({ car, onClose, onSubmit }) => {
   const [showQR, setShowQR] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const startMobileUpload = async () => {
-    const { data } = await supabase.from('upload_sessions').insert([{ status: 'pending' }]).select().single();
-    if (data) {
-      setSessionId(data.id);
-      setShowQR(true);
-      
-      const channel = supabase.channel(`room-${data.id}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'upload_sessions', filter: `id=eq.${data.id}` }, 
+const startMobileUpload = async () => {
+  // 1. ถ้าเป็นการ "แก้ไขรถ" เรามี id อยู่แล้ว
+  // 2. ถ้าเป็น "เพิ่มรถใหม่" เราต้อง Insert แถวว่างๆ เข้าไปก่อนเพื่อให้ได้ ID
+  let currentId = car?.id;
+
+  if (!currentId) {
+    const { data } = await supabase.from('motorcycles').insert([{ status: 'พร้อมขาย' }]).select().single();
+    if (data) currentId = data.id;
+  }
+
+  if (currentId) {
+    setSessionId(currentId);
+    setShowQR(true);
+    
+    // ✅ เปลี่ยนมาติดตามตาราง motorcycles
+    const channel = supabase.channel(`car-${currentId}`)
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'motorcycles', filter: `id=eq.${currentId}` }, 
         (payload) => {
-          if (payload.new.status === 'completed') {
+          if (payload.new.image_url) {
             setFormData(prev => ({ ...prev, image_url: payload.new.image_url }));
-            setShowQR(false);
+            setShowQR(false); // รูปมาแล้ว ปิด QR ทันที
             supabase.removeChannel(channel);
           }
-        }).subscribe();
-    }
-  };
+        }
+      ).subscribe();
+  }
+};
   // -------------------------
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
