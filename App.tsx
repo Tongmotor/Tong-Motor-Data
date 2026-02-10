@@ -5,7 +5,17 @@ import { Header } from './components/Header';
 import { CarCard } from './components/CarCard';
 import { CarForm } from './components/CarForm';
 import { supabase } from './lib/supabase';
+// ✅ 1. เพิ่มการ Import ไฟล์ MobileUpload ไว้ที่ด้านบนสุด
+import { MobileUpload } from './MobileUpload'; 
 
+const App: React.FC = () => {
+  // ✅ 2. เพิ่มส่วนเช็ค Path ไว้บรรทัดแรกสุดในตัว App
+  const isUploadPage = window.location.pathname === '/upload';
+
+  if (isUploadPage) {
+    return <MobileUpload />;
+  }
+  
 const App: React.FC = () => {
   const [cars, setCars] = useState<Motorcycle[]>([]);
   const [filter, setFilter] = useState<'ทั้งหมด' | CarStatus>('ทั้งหมด');
