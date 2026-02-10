@@ -12,14 +12,30 @@ export const MobileUpload: React.FC = () => {
   const sessionId = query.get('id');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImage(file);
-      // ✅ สร้าง URL ชั่วคราวมาโชว์รูป ไม่ให้รูปหาย
-      setPreviewUrl(URL.createObjectURL(file));
-      setStatus('idle');
-    }
-  };
+  const file = e.target.files?.[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (event: any) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // ✅ บีบให้ขนาดพอดีหน้าจอคอม
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // ✅ บีบอัดไฟล์ให้เล็กลงมากพอที่จะส่งผ่าน Realtime ได้ทุกรูป
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6); 
+        setPreviewUrl(dataUrl);
+      };
+    };
+    reader.readAsDataURL(file);
+  }
+};
 
 // ใน MobileUpload.tsx
 const handleUpload = async () => {
