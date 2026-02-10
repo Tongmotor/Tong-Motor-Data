@@ -21,7 +21,7 @@ export const MobileUpload: React.FC = () => {
     }
   };
 
-  // ในไฟล์ MobileUpload.tsx ส่วน handleUpload
+// ในไฟล์ MobileUpload.tsx
 const handleUpload = async () => {
   if (!image || !sessionId) return;
   setUploading(true);
@@ -31,17 +31,17 @@ const handleUpload = async () => {
   reader.onloadend = async () => {
     const base64data = reader.result as string;
 
-    // ✅ เปลี่ยนชื่อตารางเป็นชื่อตารางเก่าของคุณตรงนี้ (เช่น 'motorcycles')
+    // ✅ เปลี่ยนมาอัปเดตที่ตาราง motorcycles ของคุณโดยตรง
     const { error } = await supabase
       .from('motorcycles') 
-      .update({ image_url: base64data }) // ชื่อคอลัมน์เก็บรูปในตารางเก่าของคุณ
-      .eq('id', sessionId); // sessionId ในที่นี้คือ id ของรถที่ส่งมาจาก QR
+      .update({ image_url: base64data }) 
+      .eq('id', sessionId); // sessionId คือ ID ของรถคันนั้นๆ
 
     if (error) {
-      alert("Error: " + error.message);
+      alert("เกิดข้อผิดพลาด: " + error.message);
     } else {
       setStatus('success');
-      alert("อัปเดตรูปในระบบเรียบร้อย!");
+      alert("บันทึกรูปภาพเรียบร้อย!");
     }
     setUploading(false);
   };
