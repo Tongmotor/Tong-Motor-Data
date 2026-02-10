@@ -21,39 +21,31 @@ export const MobileUpload: React.FC = () => {
     }
   };
 
-  const handleUpload = async () => {
-    if (!image || !sessionId) return;
-    setUploading(true);
+  // ในไฟล์ MobileUpload.tsx ส่วน handleUpload
+const handleUpload = async () => {
+  if (!image || !sessionId) return;
+  setUploading(true);
 
-    try {
-      // 1. แปลงรูปเป็น Base64 เพื่อส่งเข้า Database (วิธีที่ง่ายที่สุด)
-      const reader = new FileReader();
-      reader.readAsDataURL(image);
-      reader.onloadend = async () => {
-        const base64data = reader.result as string;
+  const reader = new FileReader();
+  reader.readAsDataURL(image);
+  reader.onloadend = async () => {
+    const base64data = reader.result as string;
 
-        // 2. อัปเดตข้อมูลใน Supabase
-        const { error } = await supabase
-          .from('upload_sessions')
-          .update({ 
-            image_url: base64data,
-            status: 'completed' 
-          })
-          .eq('id', sessionId);
+    // ✅ เปลี่ยนชื่อตารางเป็นชื่อตารางเก่าของคุณตรงนี้ (เช่น 'motorcycles')
+    const { error } = await supabase
+      .from('motorcycles') 
+      .update({ image_url: base64data }) // ชื่อคอลัมน์เก็บรูปในตารางเก่าของคุณ
+      .eq('id', sessionId); // sessionId ในที่นี้คือ id ของรถที่ส่งมาจาก QR
 
-        if (error) throw error;
-        
-        setStatus('success');
-        alert("ส่งรูปสำเร็จ! ดูที่หน้าจอคอมได้เลยครับ");
-      };
-    } catch (err) {
-      console.error(err);
-      setStatus('error');
-      alert("เกิดข้อผิดพลาดในการส่งรูป");
-    } finally {
-      setUploading(false);
+    if (error) {
+      alert("Error: " + error.message);
+    } else {
+      setStatus('success');
+      alert("อัปเดตรูปในระบบเรียบร้อย!");
     }
+    setUploading(false);
   };
+};
 
   if (status === 'success') {
     return (
