@@ -9,7 +9,7 @@ import { MobileUpload } from './MobileUpload';
 
 const App: React.FC = () => {
   // ✅ เช็คว่าเป็นหน้าอัปโหลดรูปหรือไม่
-  const isUploadPage = window.location.pathname.includes('/upload') || window.location.hash.includes('/upload');
+  const isUploadPage = window.location.pathname.includes('upload') || window.location.hash.includes('upload');
 
   const [cars, setCars] = useState<Motorcycle[]>([]);
   const [filter, setFilter] = useState<'ทั้งหมด' | CarStatus>('ทั้งหมด');
