@@ -1,57 +1,122 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
 export const MobileUpload: React.FC = () => {
+  const [image, setImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const sessionId = new URLSearchParams(window.location.search).get('id');
+  const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ดึง sessionId จาก URL (เช่น ?id=xxxx)
+  const query = new URLSearchParams(window.location.search);
+  const sessionId = query.get('id');
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev: any) => {
-        const img = new Image();
-        img.src = ev.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const maxW = 800;
-          const scale = maxW / img.width;
-          canvas.width = maxW;
-          canvas.height = img.height * scale;
-          ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-          setPreviewUrl(canvas.toDataURL('image/jpeg', 0.6)); // บีบอัด 60%
-        };
-      };
-      reader.readAsDataURL(file);
+      setImage(file);
+      // ✅ สร้าง URL ชั่วคราวมาโชว์รูป ไม่ให้รูปหาย
+      setPreviewUrl(URL.createObjectURL(file));
+      setStatus('idle');
     }
   };
 
-  const upload = async () => {
-    if (!previewUrl || !sessionId) return;
+  const handleUpload = async () => {
+    if (!image || !sessionId) return;
     setUploading(true);
-    const { error } = await supabase.from('motorcycles').update({ image_url: previewUrl }).eq('id', sessionId);
-    if (!error) setSuccess(true);
-    else alert("ส่งไม่สำเร็จ: " + error.message);
-    setUploading(false);
+
+    try {
+      // 1. แปลงรูปเป็น Base64 เพื่อส่งเข้า Database (วิธีที่ง่ายที่สุด)
+      const reader = new FileReader();
+      reader.readAsDataURL(image);
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+
+        // 2. อัปเดตข้อมูลใน Supabase
+        const { error } = await supabase
+          .from('upload_sessions')
+          .update({ 
+            image_url: base64data,
+            status: 'completed' 
+          })
+          .eq('id', sessionId);
+
+        if (error) throw error;
+        
+        setStatus('success');
+        alert("ส่งรูปสำเร็จ! ดูที่หน้าจอคอมได้เลยครับ");
+      };
+    } catch (err) {
+      console.error(err);
+      setStatus('error');
+      alert("เกิดข้อผิดพลาดในการส่งรูป");
+    } finally {
+      setUploading(false);
+    }
   };
 
-  if (success) return <div className="p-10 text-center text-2xl font-bold text-green-600">✅ ส่งรูปสำเร็จ! ปิดหน้านี้ได้เลย</div>;
+  if (status === 'success') {
+    return (
+      <div className="min-h-screen bg-green-600 flex flex-col items-center justify-center text-white p-6 text-center">
+        <div className="text-7xl mb-4">✅</div>
+        <h1 className="text-4xl font-black mb-2">ส่งรูปเรียบร้อย!</h1>
+        <p className="text-xl opacity-90">คุณสามารถปิดหน้านี้ได้เลยครับ</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-blue-700 p-6 flex flex-col items-center justify-center text-white">
-      <h1 className="text-2xl font-bold mb-6">ถ่ายรูปมอเตอร์ไซค์</h1>
-      <div className="w-full aspect-square bg-white rounded-3xl overflow-hidden relative mb-6">
-        {previewUrl ? <img src={previewUrl} className="w-full h-full object-cover" /> : <div className="h-full flex items-center justify-center text-gray-400">กดเพื่อเปิดกล้อง</div>}
-        <input type="file" accept="image/*" capture="environment" onChange={handleFile} className="absolute inset-0 opacity-0" />
+    <div className="min-h-screen bg-blue-600 p-6 flex flex-col items-center justify-center text-white font-sans">
+      <div className="bg-white px-4 py-1 rounded-lg mb-4">
+        <span className="text-blue-600 font-black text-2xl">ตงมอเตอร์</span>
       </div>
+      
+      <h2 className="text-2xl font-bold mb-8 text-center">ถ่ายรูปมอเตอร์ไซค์</h2>
+
+      {/* กรอบแสดงรูป */}
+      <div className="w-full max-w-sm aspect-square bg-white rounded-[40px] shadow-2xl border-8 border-white/20 overflow-hidden relative flex flex-col items-center justify-center text-slate-400">
+        {previewUrl ? (
+          <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" />
+        ) : (
+          <div className="flex flex-col items-center">
+            <span className="text-7xl mb-2">📸</span>
+            <p className="font-bold">กดตรงนี้เพื่อถ่ายรูป</p>
+          </div>
+        )}
+        
+        {/* Input สำหรับกดเลือกรูป/ถ่ายรูป */}
+        <input 
+          type="file" 
+          accept="image/*" 
+          capture="environment" // บังคับเปิดกล้องหลังทันที
+          onChange={handleFileChange}
+          className="absolute inset-0 opacity-0 cursor-pointer"
+        />
+      </div>
+
+      {/* ✅ ปุ่มกดยืนยัน (จะโผล่มาเมื่อเลือกรูปแล้ว) */}
       {previewUrl && (
-        <button onClick={upload} disabled={uploading} className="w-full bg-yellow-400 text-blue-900 py-4 rounded-full text-xl font-black">
-          {uploading ? 'กำลังส่ง...' : 'ยืนยันส่งรูป ✅'}
+        <button
+          onClick={handleUpload}
+          disabled={uploading}
+          className={`mt-10 w-full max-w-sm py-5 rounded-full text-2xl font-black shadow-xl transition-all active:scale-90 ${
+            uploading ? 'bg-slate-400' : 'bg-yellow-400 text-blue-900'
+          }`}
+        >
+          {uploading ? 'กำลังส่งข้อมูล...' : 'กดเพื่อส่งรูปเข้าคอม ✅'}
         </button>
       )}
+
+      {previewUrl && (
+        <button 
+          onClick={() => { setPreviewUrl(null); setImage(null); }}
+          className="mt-4 text-white/70 font-bold underline"
+        >
+          ถ่ายใหม่
+        </button>
+      )}
+
+      <p className="mt-8 text-xs opacity-50">Session: {sessionId}</p>
     </div>
   );
 };
